@@ -1,0 +1,10 @@
+REBUILD_PROMPT.md
+
+__pycache__/
+*.pyc
+*.pyo
+
+build/
+dist/
+
+*.log

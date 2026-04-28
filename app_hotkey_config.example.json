@@ -1,0 +1,18 @@
+{
+  "display_name": "App Hotkey Manager",
+  "mutex_name": "Global\\AppHotkeyManager",
+  "entries": [
+    {
+      "app": "cloudmusic",
+      "hotkey": "CTRL+ALT+Q",
+      "launch_if_not_running": false,
+      "install_path": ""
+    },
+    {
+      "app": "zotero",
+      "hotkey": "CTRL+ALT+Z",
+      "launch_if_not_running": true,
+      "install_path": "C:\\Program Files\\Zotero\\zotero.exe"
+    }
+  ]
+}
