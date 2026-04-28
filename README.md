@@ -145,6 +145,25 @@ WIN+1
 python -m pip install pyinstaller
 ```
 
+## 文件作用
+
+- `app_hotkey_manager.py`
+  主程序源码。负责读取配置、注册全局快捷键，并按配置控制对应应用
+- `app_hotkey_manager.spec`
+  PyInstaller 打包配置。负责打包时收集运行所需文件
+- `app_hotkey_config.json`
+  实际使用的构建配置。打包前编辑这个文件
+- `app_hotkey_config.example.json`
+  配置模板示例。用于参考，不一定直接参与实际构建
+- `build_exe.bat`
+  打包脚本。执行后生成 `dist\app_hotkey_manager.exe`
+- `install_startup.bat`
+  安装开机自启动。会把打包好的 `exe` 复制到当前用户启动目录
+- `uninstall_startup.bat`
+  删除开机自启动。会从当前用户启动目录移除对应 `exe`
+- `README.md`
+  项目说明文档
+
 ## 构建
 
 1. 编辑 [`app_hotkey_config.json`](C:\Users\gxy\Documents\New project 2\app_hotkey_config.json)
