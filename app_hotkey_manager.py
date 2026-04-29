@@ -3,6 +3,7 @@
 import atexit
 import ctypes
 import json
+import os
 import subprocess
 import sys
 import time
@@ -414,16 +415,19 @@ class AppController:
         return None
 
     def resolve_launch_path(self) -> str | None:
-        if self.install_path and Path(self.install_path).exists():
-            return self.install_path
+        if self.install_path:
+            expanded_install_path = os.path.expandvars(self.install_path)
+            if Path(expanded_install_path).exists():
+                return expanded_install_path
 
         registry_path = self.read_app_path_from_registry()
         if registry_path:
             return registry_path
 
         for candidate in self.launch_candidates:
-            if Path(candidate).exists():
-                return candidate
+            expanded_candidate = os.path.expandvars(candidate)
+            if Path(expanded_candidate).exists():
+                return expanded_candidate
         return None
 
     def launch_app(self) -> bool:
@@ -515,7 +519,25 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             launch_timeout_seconds=10.0,
         )
 
-    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero")
+    if app_id == "termius":
+        return AppController(
+            app_id=app_id,
+            exe_name="Termius.exe",
+            primary_window_classes={"Chrome_WidgetWin_1"},
+            ignored_window_classes=set(),
+            hide_mode="minimize",
+            launch_if_not_running=bool(entry.get("launch_if_not_running", True)),
+            install_path=install_path,
+            launch_candidates=[
+                r"C:\Users\%USERNAME%\AppData\Local\Programs\Termius\Termius.exe",
+                r"C:\Program Files\Termius\Termius.exe",
+                r"C:\Program Files (x86)\Termius\Termius.exe",
+            ],
+            app_paths_registry_names=["Termius.exe", "termius.exe"],
+            launch_timeout_seconds=10.0,
+        )
+
+    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero, termius")
 
 
 def load_config() -> dict:

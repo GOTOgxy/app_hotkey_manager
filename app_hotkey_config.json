@@ -13,6 +13,12 @@
       "hotkey": "CTRL+ALT+Z",
       "launch_if_not_running": true,
       "install_path": "C:\\Program Files\\Zotero\\zotero.exe"
+    },
+    {
+      "app": "termius",
+      "hotkey": "CTRL+ALT+T",
+      "launch_if_not_running": true,
+      "install_path": ""
     }
   ]
 }

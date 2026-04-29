@@ -8,6 +8,7 @@
 
 - `cloudmusic`
 - `zotero`
+- `termius`
 
 ## 当前行为
 
@@ -25,15 +26,22 @@
 - 已在前台：最小化
 - 已启动但没有可见主窗口：尝试恢复到前台
 
+### Termius `termius`
+
+- 未启动时：可按配置决定是否启动
+- 已启动且不在前台：切到前台
+- 已在前台：最小化
+- 已启动但没有可见主窗口：尝试恢复到前台
+
 ## 配置文件
 
 构建前请编辑：
 
-[`app_hotkey_config.json`](C:\Users\gxy\Documents\New project 2\app_hotkey_config.json)
+`app_hotkey_config.json`
 
 模板：
 
-[`app_hotkey_config.example.json`](C:\Users\gxy\Documents\New project 2\app_hotkey_config.example.json)
+`app_hotkey_config.example.json`
 
 配置示例：
 
@@ -53,6 +61,12 @@
       "hotkey": "CTRL+ALT+Z",
       "launch_if_not_running": true,
       "install_path": "C:\\Program Files\\Zotero\\zotero.exe"
+    },
+    {
+      "app": "termius",
+      "hotkey": "CTRL+ALT+T",
+      "launch_if_not_running": true,
+      "install_path": ""
     }
   ]
 }
@@ -67,7 +81,7 @@
 - `entries`
   快捷键绑定列表
 - `app`
-  当前支持 `cloudmusic` 或 `zotero`
+  当前支持 `cloudmusic`、`zotero`、`termius`
 - `hotkey`
   快捷键字符串
 - `launch_if_not_running`
@@ -82,6 +96,12 @@
 - 如果 `install_path` 为空，程序会继续尝试：
   - Windows 注册表中的 `App Paths`
   - 常见默认安装路径
+
+程序当前的查找顺序是：
+
+1. 先使用配置里填写的 `install_path`
+2. 如果未填写或路径不存在，则尝试读取 Windows 注册表中的 `App Paths`
+3. 如果注册表中也没有，则尝试程序内置的常见默认安装路径
 
 也就是说：
 
@@ -101,6 +121,8 @@
 
 ```text
 CTRL+ALT+Q
+CTRL+ALT+Z
+CTRL+ALT+T
 CTRL+SHIFT+Z
 ALT+F10
 WIN+1
@@ -166,7 +188,7 @@ python -m pip install pyinstaller
 
 ## 构建
 
-1. 编辑 [`app_hotkey_config.json`](C:\Users\gxy\Documents\New project 2\app_hotkey_config.json)
+1. 编辑 `app_hotkey_config.json`
 2. 运行：
 
 ```bat
@@ -175,13 +197,13 @@ build_exe.bat
 
 输出文件：
 
-[`app_hotkey_manager.exe`](C:\Users\gxy\Documents\New project 2\dist\app_hotkey_manager.exe)
+`dist\app_hotkey_manager.exe`
 
 ## 运行
 
 直接运行：
 
-[`app_hotkey_manager.exe`](C:\Users\gxy\Documents\New project 2\dist\app_hotkey_manager.exe)
+`dist\app_hotkey_manager.exe`
 
 最终用户运行 `exe` 时，不需要安装 Python。
 
@@ -201,6 +223,6 @@ uninstall_startup.bat
 
 当前实现方式：
 
-- `install_startup.bat` 会把 [`app_hotkey_manager.exe`](C:\Users\gxy\Documents\New project 2\dist\app_hotkey_manager.exe) 复制到当前用户的启动目录
+- `install_startup.bat` 会把 `dist\app_hotkey_manager.exe` 复制到当前用户的启动目录
 - 启动目录位置是 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`
 - 用户登录 Windows 后，系统会自动运行这个目录中的 `app_hotkey_manager.exe`
