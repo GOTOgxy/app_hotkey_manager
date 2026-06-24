@@ -909,11 +909,6 @@ class HotkeyManager:
                   exe_name: str = "", title_keyword: str = "") -> dict | None:
         modifiers, virtual_key = parse_hotkey(hotkey)
 
-        hotkey_signature = (modifiers, virtual_key)
-        for entry in self.entries:
-            if (entry["modifiers"], entry["virtual_key"]) == hotkey_signature:
-                raise ValueError(f"快捷键 {hotkey} 已被使用")
-
         entry_id = self.next_id
         self.next_id += 1
 
@@ -957,11 +952,6 @@ class HotkeyManager:
             return False
 
         modifiers, virtual_key = parse_hotkey(hotkey)
-
-        hotkey_signature = (modifiers, virtual_key)
-        for entry in self.entries:
-            if entry["id"] != entry_id and (entry["modifiers"], entry["virtual_key"]) == hotkey_signature:
-                raise ValueError(f"快捷键 {hotkey} 已被使用")
 
         self._unregister_one(old_entry)
 

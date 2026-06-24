@@ -439,7 +439,7 @@ class HotkeyManagerApp(tk.Tk):
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.tree.bind("<Double-1>", lambda e: self._edit_entry())
+        self.tree.bind("<Double-1>", self._on_double_click)
         self.tree.bind("<Button-3>", self._on_right_click)
 
         self.context_menu = tk.Menu(self, tearoff=0)
@@ -469,8 +469,8 @@ class HotkeyManagerApp(tk.Tk):
             else:
                 app_name = EntryDialog.APP_NAMES.get(app_id, app_id)
             hotkey = entry["hotkey"]
-            enabled = "是" if entry.get("enabled", True) else "否"
-            launch = "是" if entry["config_entry"].get("launch_if_not_running", False) else "否"
+            enabled = "✓" if entry.get("enabled", True) else "✗"
+            launch = "✓" if entry["config_entry"].get("launch_if_not_running", False) else "✗"
             path = entry["config_entry"].get("install_path", "")
 
             self.tree.insert("", tk.END, iid=str(entry["id"]),
@@ -575,6 +575,31 @@ class HotkeyManagerApp(tk.Tk):
 
         self.manager.toggle_entry(entry_id)
         self._refresh_list()
+
+    def _on_double_click(self, event):
+        region = self.tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+
+        column = self.tree.identify_column(event.x)
+        entry_id = self._get_selected_id()
+        if entry_id is None:
+            return
+
+        entry = self.manager.entry_map.get(entry_id)
+        if not entry:
+            return
+
+        if column == "#3":
+            self.manager.toggle_entry(entry_id)
+            self._refresh_list()
+        elif column == "#4":
+            old_val = entry["config_entry"].get("launch_if_not_running", False)
+            entry["config_entry"]["launch_if_not_running"] = not old_val
+            self.manager._save_config()
+            self._refresh_list()
+        else:
+            self._edit_entry()
 
     def _on_right_click(self, event):
         item = self.tree.identify_row(event.y)
