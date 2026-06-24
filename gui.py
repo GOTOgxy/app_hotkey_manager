@@ -409,7 +409,8 @@ class HotkeyManagerApp(tk.Tk):
 
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
 
-        ttk.Button(toolbar, text="启用/禁用", command=self._toggle_entry, width=10).pack(side=tk.LEFT, padx=2)
+        self.running_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(toolbar, text="运行中", variable=self.running_var, command=self._toggle_all).pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
 
@@ -574,6 +575,20 @@ class HotkeyManagerApp(tk.Tk):
             return
 
         self.manager.toggle_entry(entry_id)
+        self._refresh_list()
+
+    def _toggle_all(self):
+        enabled = self.running_var.get()
+        for entry in self.manager.entries:
+            if entry.get("enabled") != enabled:
+                if enabled:
+                    entry["enabled"] = True
+                    self.manager._register_one(entry)
+                else:
+                    self.manager._unregister_one(entry)
+                    entry["enabled"] = False
+                entry["config_entry"]["enabled"] = enabled
+        self.manager._save_config()
         self._refresh_list()
 
     def _on_double_click(self, event):
