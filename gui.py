@@ -30,7 +30,8 @@ class HotkeyCaptureDialog(tk.Toplevel):
         self.modifiers = 0
         self.virtual_key = 0
         self.captured = False
-        self._pressed_modifiers = set()
+        self._pressed = set()
+        self._captured = []
 
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
@@ -40,11 +41,7 @@ class HotkeyCaptureDialog(tk.Toplevel):
         ttk.Label(main_frame, text="请按下快捷键组合：", font=("", 12)).pack(pady=(0, 10))
 
         self.hotkey_var = tk.StringVar(value=current_hotkey or "等待输入...")
-        self.hotkey_label = ttk.Label(main_frame, textvariable=self.hotkey_var, font=("", 14, "bold"))
-        self.hotkey_label.pack(pady=(0, 10))
-
-        self.debug_var = tk.StringVar(value="")
-        ttk.Label(main_frame, textvariable=self.debug_var, font=("", 9), foreground="gray").pack()
+        ttk.Label(main_frame, textvariable=self.hotkey_var, font=("", 14, "bold")).pack(pady=(0, 10))
 
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack()
@@ -57,56 +54,48 @@ class HotkeyCaptureDialog(tk.Toplevel):
 
         self.bind("<KeyPress>", self._on_key_press)
         self.bind("<KeyRelease>", self._on_key_release)
+        self.focus_set()
+
+    def _normalize(self, keysym):
+        mapping = {
+            "control_l": "ctrl", "control_r": "ctrl",
+            "alt_l": "alt", "alt_r": "alt",
+            "shift_l": "shift", "shift_r": "shift",
+            "super_l": "win", "super_r": "win",
+            "meta_l": "win", "meta_r": "win",
+        }
+        return mapping.get(keysym.lower(), keysym.lower())
 
     def _on_key_release(self, event):
-        self._pressed_modifiers.discard(event.keysym)
+        name = self._normalize(event.keysym)
+        self._pressed.discard(name)
 
     def _on_key_press(self, event):
-        MODIFIER_KEYSYM = {
-            "Control_L": MOD_CONTROL, "Control_R": MOD_CONTROL,
-            "Alt_L": MOD_ALT, "Alt_R": MOD_ALT,
-            "Shift_L": MOD_SHIFT, "Shift_R": MOD_SHIFT,
-            "Super_L": MOD_WIN, "Super_R": MOD_WIN,
-            "Meta_L": MOD_WIN, "Meta_R": MOD_WIN,
-        }
-
-        if event.keysym in MODIFIER_KEYSYM:
-            self._pressed_modifiers.add(event.keysym)
+        name = self._normalize(event.keysym)
+        if name in ("ctrl", "shift", "alt", "win"):
+            self._pressed.add(name)
             return
 
-        modifiers = 0
-        for ks in self._pressed_modifiers:
-            modifiers |= MODIFIER_KEYSYM.get(ks, 0)
-
-        key_upper = event.keysym.upper()
-        virtual_key = VIRTUAL_KEYS.get(key_upper)
-
-        if virtual_key is None:
-            if len(event.char) == 1:
-                char = event.char.upper()
-                virtual_key = VIRTUAL_KEYS.get(char)
-
-        if virtual_key is None or modifiers == 0:
-            return
-
-        self.modifiers = modifiers
-        self.virtual_key = virtual_key
+        combo = sorted(self._pressed | {name})
+        self._captured = combo
+        self.hotkey_var.set(" + ".join(combo).upper())
         self.captured = True
+        self.captured_hotkey = " + ".join(combo).upper()
 
-        parts = []
-        if modifiers & MOD_CONTROL:
-            parts.append("CTRL")
-        if modifiers & MOD_ALT:
-            parts.append("ALT")
-        if modifiers & MOD_SHIFT:
-            parts.append("SHIFT")
-        if modifiers & MOD_WIN:
-            parts.append("WIN")
-        parts.append(key_upper)
+        self.modifiers = 0
+        for mod in combo:
+            if mod == "ctrl":
+                self.modifiers |= MOD_CONTROL
+            elif mod == "alt":
+                self.modifiers |= MOD_ALT
+            elif mod == "shift":
+                self.modifiers |= MOD_SHIFT
+            elif mod == "win":
+                self.modifiers |= MOD_WIN
 
-        self.captured_hotkey = "+".join(parts)
-        self.hotkey_var.set(self.captured_hotkey)
-        self.debug_var.set(f"tracked modifiers: {self._pressed_modifiers}")
+        key_token = combo[-1].upper()
+        self.virtual_key = VIRTUAL_KEYS.get(key_token, 0)
+
         self.ok_btn.config(state=tk.NORMAL)
 
     def _on_clear(self):
@@ -114,7 +103,8 @@ class HotkeyCaptureDialog(tk.Toplevel):
         self.modifiers = 0
         self.virtual_key = 0
         self.captured = False
-        self._pressed_modifiers.clear()
+        self._pressed.clear()
+        self._captured = []
         self.hotkey_var.set("等待输入...")
         self.ok_btn.config(state=tk.DISABLED)
 
