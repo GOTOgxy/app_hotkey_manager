@@ -26,7 +26,8 @@
     {
       "app": "hot_key_manager",
       "name": "Hot Key Manager",
-      "hotkey": "CTRL+ALT+H"
+      "hotkey": "CTRL+ALT+H",
+      "enabled": true
     },
     {
       "app": "generic",
