@@ -287,6 +287,7 @@ class HotkeyManagerApp(tk.Tk):
         self.tray_menu.add_command(label="退出", command=self._quit_app)
 
         self._start_polling()
+        self._start_hotkey_polling()
 
     def _create_programmatic_icon(self):
         SIZE = 16
@@ -489,8 +490,14 @@ class HotkeyManagerApp(tk.Tk):
         self.status_label.config(text=f"共 {count} 个条目")
 
     def _start_polling(self):
-        self.manager.process_hotkeys()
+        self._poll_tray_events()
+        self.after(10, self._start_polling)
 
+    def _start_hotkey_polling(self):
+        self.manager.process_hotkeys()
+        self.after(20, self._start_hotkey_polling)
+
+    def _poll_tray_events(self):
         if self._tray_event:
             ev = self._tray_event
             self._tray_event = 0
@@ -500,8 +507,6 @@ class HotkeyManagerApp(tk.Tk):
                 self._show_window()
             elif ev == 0x0203:  # WM_LBUTTONDBLCLK
                 self._show_window()
-
-        self.after(50, self._start_polling)
 
     def _get_selected_id(self) -> int | None:
         sel = self.tree.selection()
