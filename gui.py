@@ -578,17 +578,12 @@ class HotkeyManagerApp(tk.Tk):
         self._refresh_list()
 
     def _toggle_all(self):
-        enabled = self.running_var.get()
-        for entry in self.manager.entries:
-            if entry.get("enabled") != enabled:
-                if enabled:
-                    entry["enabled"] = True
+        if self.running_var.get():
+            for entry in self.manager.entries:
+                if entry.get("enabled", True):
                     self.manager._register_one(entry)
-                else:
-                    self.manager._unregister_one(entry)
-                    entry["enabled"] = False
-                entry["config_entry"]["enabled"] = enabled
-        self.manager._save_config()
+        else:
+            self.manager.unregister_all()
         self._refresh_list()
 
     def _on_double_click(self, event):
