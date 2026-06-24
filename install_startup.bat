@@ -3,26 +3,25 @@ setlocal
 
 cd /d "%~dp0"
 
-set "SOURCE_EXE=%CD%\dist\app_hotkey_manager.exe"
+set "SOURCE=%CD%\启动.bat"
 set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "TARGET_EXE=%STARTUP_DIR%\app_hotkey_manager.exe"
+set "TARGET=%STARTUP_DIR%\app_hotkey_manager.bat"
 
-if not exist "%SOURCE_EXE%" (
-  echo EXE not found:
-  echo %SOURCE_EXE%
-  echo Please build the project first.
+if not exist "%SOURCE%" (
+  echo 启动.bat not found:
+  echo %SOURCE%
   goto :end
 )
 
-copy /y "%SOURCE_EXE%" "%TARGET_EXE%" >nul
+copy /y "%SOURCE%" "%TARGET%" >nul
 if errorlevel 1 (
   echo Install failed.
   goto :end
 )
 
-if exist "%TARGET_EXE%" (
+if exist "%TARGET%" (
   echo Startup install complete.
-  echo %TARGET_EXE%
+  echo %TARGET%
 ) else (
   echo Install failed.
 )

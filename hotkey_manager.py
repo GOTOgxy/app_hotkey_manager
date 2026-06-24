@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import atexit
 import ctypes
 import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import winreg
 from ctypes import wintypes
@@ -14,6 +14,9 @@ from pathlib import Path
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 TH32CS_SNAPPROCESS = 0x00000002
@@ -37,6 +40,19 @@ WM_HOTKEY = 0x0312
 PM_REMOVE = 0x0001
 GW_OWNER = 4
 
+DWMWA_TRANSITIONS_FORCEDISABLED = 33
+
+NIF_MESSAGE = 0x00000001
+NIF_ICON = 0x00000002
+NIF_TIP = 0x00000004
+NIM_ADD = 0x00000000
+NIM_MODIFY = 0x00000001
+NIM_DELETE = 0x00000002
+WM_LBUTTONDBLCLK = 0x0203
+WM_RBUTTONUP = 0x0205
+
+TRAY_ICON_ID = 1
+
 CONFIG_FILE_NAME = "app_hotkey_config.json"
 DEFAULT_MUTEX_NAME = "Global\\AppHotkeyManager"
 
@@ -53,6 +69,41 @@ class PROCESSENTRY32W(ctypes.Structure):
         ("pcPriClassBase", ctypes.c_long),
         ("dwFlags", wintypes.DWORD),
         ("szExeFile", wintypes.WCHAR * MAX_PATH),
+    ]
+
+
+class WNDCLASS(ctypes.Structure):
+    _fields_ = [
+        ("style", wintypes.UINT),
+        ("lpfnWndProc", ctypes.c_void_p),
+        ("cbClExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", ctypes.c_void_p),
+        ("hIcon", ctypes.c_void_p),
+        ("hCursor", ctypes.c_void_p),
+        ("hbrBackground", ctypes.c_void_p),
+        ("lpszMenuName", wintypes.LPCWSTR),
+        ("lpszClassName", wintypes.LPCWSTR),
+    ]
+
+
+class NOTIFYICONDATAW(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hWnd", wintypes.HWND),
+        ("uID", wintypes.UINT),
+        ("uFlags", wintypes.UINT),
+        ("uCallbackMessage", wintypes.UINT),
+        ("hIcon", wintypes.HICON),
+        ("szTip", wintypes.WCHAR * 128),
+        ("dwState", wintypes.DWORD),
+        ("dwStateMask", wintypes.DWORD),
+        ("szInfo", wintypes.WCHAR * 256),
+        ("uTimeout", wintypes.UINT),
+        ("szInfoTitle", wintypes.WCHAR * 64),
+        ("dwInfoFlags", wintypes.DWORD),
+        ("guidItem", ctypes.c_byte * 16),
+        ("hBalloonIcon", wintypes.HICON),
     ]
 
 
@@ -138,8 +189,56 @@ kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
 
+dwmapi.DwmSetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.POINTER(ctypes.c_int), wintypes.DWORD]
+dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+
 kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
 kernel32.CreateMutexW.restype = wintypes.HANDLE
+
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = ctypes.c_void_p
+
+user32.LoadImageW.argtypes = [wintypes.HANDLE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.LoadImageW.restype = wintypes.HANDLE
+
+user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+user32.GetCursorPos.restype = wintypes.BOOL
+
+user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASS)]
+user32.RegisterClassW.restype = wintypes.ATOM
+
+user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+user32.CreateWindowExW.restype = wintypes.HWND
+
+user32.DestroyWindow.argtypes = [wintypes.HWND]
+user32.DestroyWindow.restype = wintypes.BOOL
+
+user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.DefWindowProcW.restype = ctypes.c_long
+
+shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW)]
+shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+
+user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.GetWindowLongPtrW.restype = ctypes.c_long
+
+user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+user32.SetWindowLongPtrW.restype = ctypes.c_long
+
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.restype = wintypes.BOOL
+
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.SetWindowPos.restype = wintypes.BOOL
+
+GWL_EXSTYLE = -20
+WS_EX_APPWINDOW = 0x00040000
+WS_EX_TOOLWINDOW = 0x00000080
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
+SWP_FRAMECHANGED = 0x0020
 
 
 HOTKEY_MODIFIERS = {
@@ -276,6 +375,14 @@ def parse_hotkey(hotkey: str) -> tuple[int, int]:
     return modifiers, virtual_key
 
 
+class CallbackController:
+    def __init__(self, callback):
+        self.callback = callback
+
+    def toggle(self):
+        self.callback()
+
+
 class AppController:
     def __init__(
         self,
@@ -286,11 +393,13 @@ class AppController:
         ignored_window_classes: set[str] | None = None,
         hide_window_classes: set[str] | None = None,
         hide_mode: str = "minimize",
+        hide_from_taskbar: bool = False,
         launch_if_not_running: bool = False,
         install_path: str | None = None,
         launch_candidates: list[str] | None = None,
         app_paths_registry_names: list[str] | None = None,
         launch_timeout_seconds: float = 8.0,
+        title_keyword: str = "",
     ):
         self.app_id = app_id
         self.exe_name = exe_name
@@ -298,17 +407,21 @@ class AppController:
         self.ignored_window_classes = ignored_window_classes or set()
         self.hide_window_classes = hide_window_classes or set()
         self.hide_mode = hide_mode
+        self.hide_from_taskbar = hide_from_taskbar
+        self._taskbar_hidden_hwnds: dict[int, tuple[int, int, int, int]] = {}
         self.launch_if_not_running = launch_if_not_running
         self.install_path = install_path
         self.launch_candidates = launch_candidates or []
         self.app_paths_registry_names = app_paths_registry_names or []
         self.launch_timeout_seconds = launch_timeout_seconds
+        self.title_keyword = title_keyword
 
     def iter_target_processes(self):
         return iter_processes_by_name(self.exe_name)
 
     def find_main_window(self, pid: int) -> int | None:
         preferred = []
+        keyword_match = []
         fallback = []
 
         @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -330,6 +443,10 @@ class AppController:
                 preferred.append((0 if is_visible else 1, hwnd))
                 return True
 
+            if self.title_keyword and title and self.title_keyword in title:
+                keyword_match.append((0 if is_visible else 1, hwnd))
+                return True
+
             if title:
                 fallback.append((0 if is_visible else 1, hwnd))
                 return True
@@ -342,6 +459,9 @@ class AppController:
         if preferred:
             preferred.sort(key=lambda item: item[0])
             return preferred[0][1]
+        if keyword_match:
+            keyword_match.sort(key=lambda item: item[0])
+            return keyword_match[0][1]
         if fallback:
             fallback.sort(key=lambda item: item[0])
             return fallback[0][1]
@@ -350,15 +470,51 @@ class AppController:
     def is_foreground_window(self, hwnd: int) -> bool:
         return bool(hwnd and user32.IsWindowVisible(hwnd) and user32.GetForegroundWindow() == hwnd)
 
+    def _hide_from_taskbar(self, hwnd: int):
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        self._taskbar_hidden_hwnds[hwnd] = (rect.left, rect.top, rect.right, rect.bottom)
+
+        style = user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+        new_style = (style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
+        if new_style != style:
+            user32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style)
+            user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+
+    def _restore_to_taskbar(self, hwnd: int):
+        if hwnd in self._taskbar_hidden_hwnds:
+            style = user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+            new_style = (style | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
+            if new_style != style:
+                user32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style)
+                user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+
+            saved_rect = self._taskbar_hidden_hwnds.pop(hwnd)
+            user32.SetWindowPos(
+                hwnd, None,
+                saved_rect[0], saved_rect[1],
+                saved_rect[2] - saved_rect[0], saved_rect[3] - saved_rect[1],
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+
     def activate_window(self, hwnd: int) -> bool:
         if not hwnd:
             return False
+        self._restore_to_taskbar(hwnd)
+
+        disable = ctypes.c_int(1)
+        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, ctypes.byref(disable), ctypes.sizeof(disable))
+
         if user32.IsIconic(hwnd):
             user32.ShowWindow(hwnd, SW_RESTORE)
         elif user32.IsZoomed(hwnd):
             user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
         else:
             user32.ShowWindow(hwnd, SW_SHOW)
+
+        disable = ctypes.c_int(0)
+        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, ctypes.byref(disable), ctypes.sizeof(disable))
+
         return bool(user32.SetForegroundWindow(hwnd))
 
     def hide_window(self, hwnd: int) -> bool:
@@ -367,8 +523,12 @@ class AppController:
         if self.hide_mode == "tray":
             return self._hide_to_tray(hwnd)
         if self.hide_mode == "hide":
+            if self.hide_from_taskbar:
+                self._hide_from_taskbar(hwnd)
             user32.ShowWindow(hwnd, SW_HIDE)
             return True
+        if self.hide_from_taskbar:
+            self._hide_from_taskbar(hwnd)
         user32.ShowWindow(hwnd, SW_MINIMIZE)
         return True
 
@@ -509,6 +669,7 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             primary_window_classes={"MozillaWindowClass", "Chrome_WidgetWin_1"},
             ignored_window_classes={"MozillaDropShadowWindowClass"},
             hide_mode="minimize",
+            hide_from_taskbar=True,
             launch_if_not_running=bool(entry.get("launch_if_not_running", True)),
             install_path=install_path,
             launch_candidates=[
@@ -526,6 +687,7 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             primary_window_classes={"Chrome_WidgetWin_1"},
             ignored_window_classes=set(),
             hide_mode="minimize",
+            hide_from_taskbar=True,
             launch_if_not_running=bool(entry.get("launch_if_not_running", True)),
             install_path=install_path,
             launch_candidates=[
@@ -537,100 +699,334 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             launch_timeout_seconds=10.0,
         )
 
-    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero, termius")
+    if app_id == "generic":
+        exe_name = entry.get("exe_name", "")
+        if not exe_name and install_path:
+            exe_name = Path(install_path).name
+        if not exe_name:
+            raise ValueError("generic 类型必须提供 exe_name 或 install_path")
+        return AppController(
+            app_id=app_id,
+            exe_name=exe_name,
+            primary_window_classes=set(),
+            ignored_window_classes={"IME", "MSCTFIME UI", "GDI+ Hook Window Class"},
+            hide_mode="minimize",
+            hide_from_taskbar=True,
+            launch_if_not_running=bool(entry.get("launch_if_not_running", False)),
+            install_path=install_path,
+            title_keyword=entry.get("title_keyword", ""),
+        )
+
+    if app_id == "hot_key_manager":
+        return CallbackController(callback=lambda: None)
+
+    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero, termius, hot_key_manager, generic")
 
 
 def load_config() -> dict:
     config_path = get_embedded_dir() / CONFIG_FILE_NAME
     if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+        return {
+            "display_name": "App Hotkey Manager",
+            "mutex_name": DEFAULT_MUTEX_NAME,
+            "entries": [],
+        }
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
-def build_hotkey_entries(config: dict):
-    entries = config.get("entries")
-    if not isinstance(entries, list) or not entries:
-        raise ValueError("Config must contain a non-empty 'entries' list")
+class HotkeyManager:
+    def __init__(self, config: dict):
+        self.config = config
+        self.entries: list[dict] = []
+        self.entry_map: dict[int, dict] = {}
+        self.next_id = 1
+        self._hotkey_queue: list[int] = []
+        self._queue_lock = threading.Lock()
+        self._polling = False
+        self._hwnd = None
+        self._build_entries()
 
-    built_entries = []
-    seen_hotkeys = set()
-    for index, entry in enumerate(entries, start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Entry #{index} must be an object")
+    def _build_entries(self):
+        raw_entries = self.config.get("entries", [])
+        self.entries = []
+        self.entry_map = {}
+        seen_hotkeys = set()
+        self.next_id = 1
 
-        hotkey = entry.get("hotkey")
-        app_id = entry.get("app")
-        if not hotkey or not app_id:
-            raise ValueError(f"Entry #{index} must contain 'hotkey' and 'app'")
+        for raw_entry in raw_entries:
+            hotkey = raw_entry.get("hotkey")
+            app_id = raw_entry.get("app")
+            if not hotkey or not app_id:
+                continue
 
-        modifiers, virtual_key = parse_hotkey(hotkey)
-        hotkey_signature = (modifiers, virtual_key)
-        if hotkey_signature in seen_hotkeys:
-            raise ValueError(f"Duplicate hotkey '{hotkey}' in config")
-        seen_hotkeys.add(hotkey_signature)
+            try:
+                modifiers, virtual_key = parse_hotkey(hotkey)
+            except ValueError:
+                continue
 
-        controller = create_builtin_controller(app_id, entry)
-        built_entries.append(
-            {
-                "id": index,
+            hotkey_signature = (modifiers, virtual_key)
+            if hotkey_signature in seen_hotkeys:
+                continue
+            seen_hotkeys.add(hotkey_signature)
+
+            entry_id = self.next_id
+            self.next_id += 1
+
+            controller = create_builtin_controller(app_id, raw_entry)
+            entry = {
+                "id": entry_id,
                 "hotkey": hotkey,
                 "modifiers": modifiers,
                 "virtual_key": virtual_key,
                 "controller": controller,
+                "config_entry": raw_entry,
+                "enabled": raw_entry.get("enabled", True),
             }
+            self.entries.append(entry)
+            self.entry_map[entry_id] = entry
+
+        has_self_entry = any(
+            e.get("config_entry", {}).get("app") == "hot_key_manager"
+            for e in self.entries
         )
-    return built_entries
+        if not has_self_entry:
+            DEFAULT_SELF_HOTKEY = "CTRL+ALT+H"
+            self_entry = {
+                "id": self.next_id,
+                "hotkey": DEFAULT_SELF_HOTKEY,
+                "modifiers": MOD_CONTROL | MOD_ALT,
+                "virtual_key": ord("H"),
+                "controller": CallbackController(callback=lambda: None),
+                "config_entry": {"app": "hot_key_manager", "name": "Hot Key Manager", "hotkey": DEFAULT_SELF_HOTKEY},
+                "enabled": True,
+            }
+            self.entries.append(self_entry)
+            self.entry_map[self_entry["id"]] = self_entry
 
+    def register_all(self):
+        for entry in self.entries:
+            if entry.get("enabled", True):
+                self._register_one(entry)
 
-def register_hotkeys(entries):
-    for entry in entries:
-        ok = user32.RegisterHotKey(None, entry["id"], entry["modifiers"], entry["virtual_key"])
-        if not ok:
-            raise ctypes.WinError(ctypes.get_last_error())
+    def unregister_all(self):
+        for entry in self.entries:
+            self._unregister_one(entry)
 
+    def _register_one(self, entry: dict):
+        with self._queue_lock:
+            self._pending_registers.append(entry)
 
-def unregister_hotkeys(entries):
-    for entry in entries:
-        user32.UnregisterHotKey(None, entry["id"])
+    def _unregister_one(self, entry: dict):
+        with self._queue_lock:
+            self._pending_unregisters.append(entry["id"])
 
+    def set_self_callback(self, callback):
+        for entry in self.entries:
+            if entry["config_entry"].get("app") == "hot_key_manager":
+                entry["controller"] = CallbackController(callback=callback)
 
-def message_loop(entries):
-    msg = wintypes.MSG()
-    entry_map = {entry["id"]: entry for entry in entries}
-    while True:
-        while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
-            if msg.message == WM_HOTKEY and msg.wParam in entry_map:
-                entry_map[msg.wParam]["controller"].toggle()
-            user32.TranslateMessage(ctypes.byref(msg))
-            user32.DispatchMessageW(ctypes.byref(msg))
-        time.sleep(0.05)
+    def start_polling_thread(self):
+        self._pending_registers = []
+        self._pending_unregisters = []
+        self._polling = True
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
 
+    def stop_polling_thread(self):
+        self._polling = False
 
-def main():
-    config = load_config()
-    mutex_name = config.get("mutex_name", DEFAULT_MUTEX_NAME)
-    display_name = config.get("display_name", "App Hotkey Manager")
-    entries = build_hotkey_entries(config)
+    def _poll_loop(self):
+        wndproc_ref = ctypes.WINFUNCTYPE(
+            ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+        )(self._wndproc_impl)
 
-    mutex = kernel32.CreateMutexW(None, False, mutex_name)
-    if not mutex:
-        raise ctypes.WinError(ctypes.get_last_error())
-    if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
-        print(f"{display_name} is already running.")
-        return
+        wc = WNDCLASS()
+        wc.lpfnWndProc = ctypes.cast(wndproc_ref, ctypes.c_void_p)
+        wc.lpszClassName = "AppHotkeyManagerMsg"
+        wc.hInstance = kernel32.GetModuleHandleW(None)
+        user32.RegisterClassW(ctypes.byref(wc))
+        hwnd = user32.CreateWindowExW(
+            0, wc.lpszClassName, "AppHotkeyManagerMsg",
+            0, 0, 0, 0, 0, None, None, wc.hInstance, None
+        )
+        self._hwnd = hwnd
 
-    atexit.register(kernel32.CloseHandle, mutex)
-    register_hotkeys(entries)
-    atexit.register(unregister_hotkeys, entries)
+        for entry in list(self.entries):
+            if entry.get("enabled", True):
+                user32.RegisterHotKey(hwnd, entry["id"], entry["modifiers"], entry["virtual_key"])
 
-    print(f"{display_name} started.")
-    for entry in entries:
-        print(f"{entry['hotkey']} -> {entry['controller'].app_id}")
-    message_loop(entries)
+        with self._queue_lock:
+            self._pending_registers.clear()
+            self._pending_unregisters.clear()
 
+        msg = wintypes.MSG()
+        while self._polling:
+            with self._queue_lock:
+                pending_reg = list(self._pending_registers)
+                self._pending_registers.clear()
+                pending_unreg = list(self._pending_unregisters)
+                self._pending_unregisters.clear()
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        sys.exit(0)
+            for entry in pending_reg:
+                user32.RegisterHotKey(hwnd, entry["id"], entry["modifiers"], entry["virtual_key"])
+
+            for entry_id in pending_unreg:
+                user32.UnregisterHotKey(hwnd, entry_id)
+
+            while user32.PeekMessageW(ctypes.byref(msg), hwnd, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
+                if msg.message == WM_HOTKEY and msg.wParam in self.entry_map:
+                    entry = self.entry_map[msg.wParam]
+                    if entry.get("enabled", True):
+                        with self._queue_lock:
+                            self._hotkey_queue.append(msg.wParam)
+            time.sleep(0.02)
+
+        if hwnd:
+            user32.DestroyWindow(hwnd)
+        self._hwnd = None
+
+    def _wndproc_impl(self, hwnd, msg, wparam, lparam):
+        return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+    def process_hotkeys(self):
+        with self._queue_lock:
+            pending = list(self._hotkey_queue)
+            self._hotkey_queue.clear()
+
+        for entry_id in pending:
+            entry = self.entry_map.get(entry_id)
+            if entry and entry.get("enabled", True):
+                try:
+                    if hasattr(entry["controller"], "callback"):
+                        entry["controller"].callback()
+                    else:
+                        entry["controller"].toggle()
+                except Exception:
+                    pass
+
+    def add_entry(self, app_id: str, hotkey: str, enabled: bool = True,
+                  launch_if_not_running: bool = False, install_path: str = "",
+                  exe_name: str = "", title_keyword: str = "") -> dict | None:
+        modifiers, virtual_key = parse_hotkey(hotkey)
+
+        hotkey_signature = (modifiers, virtual_key)
+        for entry in self.entries:
+            if (entry["modifiers"], entry["virtual_key"]) == hotkey_signature:
+                raise ValueError(f"快捷键 {hotkey} 已被使用")
+
+        entry_id = self.next_id
+        self.next_id += 1
+
+        config_entry = {
+            "app": app_id,
+            "hotkey": hotkey,
+            "launch_if_not_running": launch_if_not_running,
+            "install_path": install_path,
+            "enabled": enabled,
+        }
+        if exe_name:
+            config_entry["exe_name"] = exe_name
+        if title_keyword:
+            config_entry["title_keyword"] = title_keyword
+
+        controller = create_builtin_controller(app_id, config_entry)
+        entry = {
+            "id": entry_id,
+            "hotkey": hotkey,
+            "modifiers": modifiers,
+            "virtual_key": virtual_key,
+            "controller": controller,
+            "config_entry": config_entry,
+            "enabled": enabled,
+        }
+
+        self.entries.append(entry)
+        self.entry_map[entry_id] = entry
+
+        if enabled:
+            self._register_one(entry)
+
+        self._save_config()
+        return entry
+
+    def update_entry(self, entry_id: int, app_id: str, hotkey: str, enabled: bool,
+                     launch_if_not_running: bool, install_path: str,
+                     exe_name: str = "", title_keyword: str = "") -> bool:
+        old_entry = self.entry_map.get(entry_id)
+        if not old_entry:
+            return False
+
+        modifiers, virtual_key = parse_hotkey(hotkey)
+
+        hotkey_signature = (modifiers, virtual_key)
+        for entry in self.entries:
+            if entry["id"] != entry_id and (entry["modifiers"], entry["virtual_key"]) == hotkey_signature:
+                raise ValueError(f"快捷键 {hotkey} 已被使用")
+
+        self._unregister_one(old_entry)
+
+        config_entry = {
+            "app": app_id,
+            "hotkey": hotkey,
+            "launch_if_not_running": launch_if_not_running,
+            "install_path": install_path,
+            "enabled": enabled,
+        }
+        if exe_name:
+            config_entry["exe_name"] = exe_name
+        if title_keyword:
+            config_entry["title_keyword"] = title_keyword
+
+        controller = create_builtin_controller(app_id, config_entry)
+        new_entry = {
+            "id": entry_id,
+            "hotkey": hotkey,
+            "modifiers": modifiers,
+            "virtual_key": virtual_key,
+            "controller": controller,
+            "config_entry": config_entry,
+            "enabled": enabled,
+        }
+
+        idx = self.entries.index(old_entry)
+        self.entries[idx] = new_entry
+        self.entry_map[entry_id] = new_entry
+
+        if enabled:
+            self._register_one(new_entry)
+
+        self._save_config()
+        return True
+
+    def remove_entry(self, entry_id: int) -> bool:
+        old_entry = self.entry_map.get(entry_id)
+        if not old_entry:
+            return False
+
+        self._unregister_one(old_entry)
+        self.entries.remove(old_entry)
+        del self.entry_map[entry_id]
+
+        self._save_config()
+        return True
+
+    def toggle_entry(self, entry_id: int) -> bool:
+        entry = self.entry_map.get(entry_id)
+        if not entry:
+            return False
+
+        if entry["enabled"]:
+            self._unregister_one(entry)
+            entry["enabled"] = False
+        else:
+            entry["enabled"] = True
+            self._register_one(entry)
+
+        entry["config_entry"]["enabled"] = entry["enabled"]
+        self._save_config()
+        return True
+
+    def _save_config(self):
+        self.config["entries"] = [e["config_entry"] for e in self.entries]
+        config_path = get_base_dir() / CONFIG_FILE_NAME
+        config_path.write_text(json.dumps(self.config, indent=2, ensure_ascii=False), encoding="utf-8")

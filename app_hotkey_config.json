@@ -6,19 +6,34 @@
       "app": "cloudmusic",
       "hotkey": "CTRL+ALT+Q",
       "launch_if_not_running": false,
-      "install_path": ""
+      "install_path": "",
+      "enabled": true
     },
     {
       "app": "zotero",
       "hotkey": "CTRL+ALT+Z",
-      "launch_if_not_running": true,
-      "install_path": "C:\\Program Files\\Zotero\\zotero.exe"
+      "launch_if_not_running": false,
+      "install_path": "C:\\Program Files\\Zotero\\zotero.exe",
+      "enabled": true
     },
     {
       "app": "termius",
-      "hotkey": "CTRL+ALT+T",
-      "launch_if_not_running": true,
-      "install_path": ""
+      "hotkey": "CTRL+Q",
+      "launch_if_not_running": false,
+      "install_path": "",
+      "enabled": true
+    },
+    {
+      "app": "hot_key_manager",
+      "name": "Hot Key Manager",
+      "hotkey": "CTRL+ALT+H"
+    },
+    {
+      "app": "generic",
+      "hotkey": "CTRL+ALT+K",
+      "launch_if_not_running": false,
+      "install_path": "C:/Program Files (x86)/Tencent/QQMusic/QQMusic.exe",
+      "enabled": true
     }
   ]
 }
