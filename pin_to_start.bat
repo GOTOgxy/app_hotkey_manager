@@ -14,14 +14,7 @@ if not exist "%BAT_PATH%" (
   goto :end
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  " = New-Object -ComObject WScript.Shell; ^
-    = .CreateShortcut('%SHORTCUT_PATH%'); ^
-   .TargetPath = '%BAT_PATH%'; ^
-   .WorkingDirectory = '%CD%'; ^
-   .Description = 'App Hotkey Manager'; ^
-   .Save(); ^
-   Write-Host 'Shortcut created: %SHORTCUT_PATH%'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command " = New-Object -ComObject WScript.Shell;  = .CreateShortcut('%SHORTCUT_PATH%'); .TargetPath = '%BAT_PATH%'; .WorkingDirectory = '%CD%'; .Description = 'App Hotkey Manager'; .Save(); Write-Host 'Shortcut created: %SHORTCUT_PATH%'"
 
 if exist "%SHORTCUT_PATH%" (
   echo.
