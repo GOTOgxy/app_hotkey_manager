@@ -8,7 +8,7 @@ set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "TARGET=%STARTUP_DIR%\app_hotkey_manager.bat"
 
 if not exist "%SOURCE%" (
-  echo 启动.bat not found:
+  echo app_hotkey_manager.bat not found:
   echo %SOURCE%
   goto :end
 )
