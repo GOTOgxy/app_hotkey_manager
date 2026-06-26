@@ -3,7 +3,7 @@ setlocal
 
 cd /d "%~dp0"
 
-set "SOURCE=%CD%\启动.bat"
+set "SOURCE=%CD%\hot_key.bat"
 set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "TARGET=%STARTUP_DIR%\app_hotkey_manager.bat"
 
