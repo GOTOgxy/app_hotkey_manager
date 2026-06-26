@@ -10,6 +10,9 @@ Windows 全局快捷键管理工具。通过系统托盘运行，支持为多个
 - 系统托盘图标，单击/双击显示 UI，右键菜单
 - 内置管理界面（tkinter），支持添加/编辑/删除/启用/禁用快捷键
 - 支持录制快捷键（自动识别修饰键 + 主键）
+- 允许快捷键重复，通过启用/禁用控制
+- 双击列表直接切换"启用"和"启动未运行"状态
+- 工具栏"运行中"全局开关，一键启用/禁用所有热键
 - 配置文件可选，缺失时以空配置启动
 - 单实例运行（Mutex）
 - 支持开机自启动
@@ -65,9 +68,11 @@ Windows 全局快捷键管理工具。通过系统托盘运行，支持为多个
 | `hotkey_manager.py` | 核心逻辑：Win32 API、AppController、HotkeyManager — **零 tkinter** |
 | `gui.py` | 界面：tkinter UI、托盘图标、对话框 |
 | `app_hotkey_config.json` | 运行时配置（可选） |
-| `启动.bat` | 双击启动（`pythonw app.py`） |
+| `app_hotkey_manager.bat` | 双击启动（`pythonw app.py`） |
 | `install_startup.bat` | 安装开机自启动 |
 | `uninstall_startup.bat` | 卸载开机自启动 |
+| `pin_to_start.bat` | 在开始菜单创建快捷方式，手动固定到开始屏幕 |
+| `requirements.txt` | Python 依赖（无第三方依赖） |
 
 ## 技术架构
 
@@ -79,14 +84,16 @@ Windows 全局快捷键管理工具。通过系统托盘运行，支持为多个
 │  │  tkinter mainloop │   │  tray window (HWND) │ │
 │  │  (message pump)   │   │  WndProc callback    │ │
 │  │                   │   │  sets flag on click  │ │
-│  │  after(50) polls: │   └─────────────────────┘ │
+│  │  after(10) polls: │   └─────────────────────┘ │
+│  │  - tray events    │                           │
+│  │  after(20) polls: │                           │
 │  │  - hotkey queue   │                           │
-│  │  - tray event     │                           │
 │  └────────┬──────────┘                           │
 │           │                                      │
 │  ┌────────▼──────────────────────────────────┐  │
 │  │         HotkeyManagerApp (tk.Tk)          │  │
-│  │  - Treeview list UI                       │  │
+│  │  - Treeview list UI (双击切换启用/启动)   │  │
+│  │  - "运行中" 全局开关                       │  │
 │  │  - EntryDialog (add/edit)                 │  │
 │  │  - HotkeyCaptureDialog (record hotkey)    │  │
 │  └───────────────────────────────────────────┘  │
@@ -118,7 +125,7 @@ Windows 全局快捷键管理工具。通过系统托盘运行，支持为多个
 
 **线程通信方式：**
 - 热键线程 → 主线程：`_hotkey_queue`（thread-safe list + Lock）
-- 托盘线程 → 主线程：`_tray_event` flag（主线程 `after(50)` 轮询读取）
+- 托盘线程 → 主线程：`_tray_event` flag（主线程 `after(10)` 轮询读取）
 - 主线程 → 热键线程：`_pending_registers` / `_pending_unregisters` 队列
 
 **任务栏隐藏（Zotero / Termius）：**
@@ -240,9 +247,11 @@ WIN+1
 | `hotkey_manager.py` | 核心逻辑（Win32 API、控制器、管理器） |
 | `gui.py` | tkinter UI（主界面、对话框、托盘） |
 | `app_hotkey_config.json` | 运行时配置 |
-| `启动.bat` | 双击启动 |
+| `app_hotkey_manager.bat` | 双击启动 |
 | `install_startup.bat` | 安装开机自启动 |
 | `uninstall_startup.bat` | 卸载开机自启动 |
+| `pin_to_start.bat` | 在开始菜单创建快捷方式 |
+| `requirements.txt` | Python 依赖（空，无第三方依赖） |
 | `README.md` | 项目文档 |
 
 ## 环境
@@ -252,7 +261,7 @@ WIN+1
 
 ## 运行
 
-双击 `启动.bat`，或命令行执行：
+双击 `app_hotkey_manager.bat`，或命令行执行：
 
 ```bat
 pythonw app.py
@@ -271,3 +280,7 @@ uninstall_startup.bat
 ```
 
 将启动脚本复制到 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`，用户登录后自动运行。
+
+## 固定到开始屏幕
+
+双击 `pin_to_start.bat`，在开始菜单创建快捷方式后右键固定到开始屏幕。
