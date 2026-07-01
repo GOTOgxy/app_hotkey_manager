@@ -76,14 +76,15 @@ class HotkeyCaptureDialog(tk.Toplevel):
             self._pressed.add(name)
             return
 
-        combo = sorted(self._pressed | {name})
-        self._captured = combo
-        self.hotkey_var.set(" + ".join(combo).upper())
+        modifiers = sorted(m for m in self._pressed if m in ("ctrl", "shift", "alt", "win"))
+        key = name
+        self._captured = modifiers + [key]
+        self.captured_hotkey = "+".join(modifiers + [key]).upper()
+        self.hotkey_var.set(self.captured_hotkey)
         self.captured = True
-        self.captured_hotkey = " + ".join(combo).upper()
 
         self.modifiers = 0
-        for mod in combo:
+        for mod in modifiers:
             if mod == "ctrl":
                 self.modifiers |= MOD_CONTROL
             elif mod == "alt":
@@ -93,7 +94,7 @@ class HotkeyCaptureDialog(tk.Toplevel):
             elif mod == "win":
                 self.modifiers |= MOD_WIN
 
-        key_token = combo[-1].upper()
+        key_token = key.upper()
         self.virtual_key = VIRTUAL_KEYS.get(key_token, 0)
 
         self.ok_btn.config(state=tk.NORMAL)
