@@ -717,10 +717,29 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             title_keyword=entry.get("title_keyword", ""),
         )
 
+    if app_id == "web_app":
+        exe_name = entry.get("exe_name", "")
+        if not exe_name:
+            raise ValueError("web_app 类型必须提供 exe_name")
+        title_keyword = entry.get("title_keyword", "")
+        if not title_keyword:
+            raise ValueError("web_app 类型必须提供 title_keyword")
+        return AppController(
+            app_id=app_id,
+            exe_name=exe_name,
+            primary_window_classes=set(),
+            ignored_window_classes={"IME", "MSCTFIME UI", "GDI+ Hook Window Class"},
+            hide_mode="minimize",
+            hide_from_taskbar=True,
+            launch_if_not_running=False,
+            install_path=None,
+            title_keyword=title_keyword,
+        )
+
     if app_id == "hot_key_manager":
         return CallbackController(callback=lambda: None)
 
-    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero, termius, hot_key_manager, generic")
+    raise ValueError(f"Unsupported app '{app_id}'. Supported values: cloudmusic, zotero, termius, hot_key_manager, generic, web_app")
 
 
 def load_config() -> dict:

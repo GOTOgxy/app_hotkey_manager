@@ -119,8 +119,9 @@ class HotkeyCaptureDialog(tk.Toplevel):
 
 
 class EntryDialog(tk.Toplevel):
-    APP_IDS = ["cloudmusic", "zotero", "termius", "hot_key_manager", "generic"]
-    APP_NAMES = {"cloudmusic": "网易云音乐", "zotero": "Zotero", "termius": "Termius", "hot_key_manager": "Hot Key Manager", "generic": "通用应用"}
+    APP_IDS = ["cloudmusic", "zotero", "termius", "hot_key_manager", "generic", "web_app"]
+    APP_NAMES = {"cloudmusic": "网易云音乐", "zotero": "Zotero", "termius": "Termius", "hot_key_manager": "Hot Key Manager", "generic": "通用应用", "web_app": "网页应用"}
+    BROWSER_MAP = {"Edge": "msedge.exe", "Chrome": "chrome.exe"}
 
     def __init__(self, parent, entry: dict | None = None):
         super().__init__(parent)
@@ -191,6 +192,14 @@ class EntryDialog(tk.Toplevel):
         )
         ttk.Entry(self.row_keyword, textvariable=self.keyword_var, width=25).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+        self.row_browser = ttk.Frame(main_frame)
+        self.row_browser.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(self.row_browser, text="浏览器：", width=10).pack(side=tk.LEFT)
+        saved_exe = entry["config_entry"].get("exe_name", "") if entry else ""
+        saved_browser = "Chrome" if saved_exe == "chrome.exe" else "Edge"
+        self.browser_var = tk.StringVar(value=saved_browser)
+        ttk.Combobox(self.row_browser, textvariable=self.browser_var, values=["Edge", "Chrome"], state="readonly", width=17).pack(side=tk.LEFT)
+
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=(10, 0))
         ttk.Button(btn_frame, text="确认", command=self._on_ok).pack(side=tk.RIGHT, padx=5)
@@ -213,13 +222,19 @@ class EntryDialog(tk.Toplevel):
             self.path_var.set(path)
 
     def _on_app_changed(self, event=None):
-        is_generic = self.app_var.get() == "generic"
-        if is_generic:
+        app = self.app_var.get()
+        if app == "generic":
             self.row_exe.pack(fill=tk.X, pady=(0, 10))
             self.row_keyword.pack(fill=tk.X, pady=(0, 10))
+            self.row_browser.pack_forget()
+        elif app == "web_app":
+            self.row_exe.pack_forget()
+            self.row_keyword.pack(fill=tk.X, pady=(0, 10))
+            self.row_browser.pack(fill=tk.X, pady=(0, 10))
         else:
             self.row_exe.pack_forget()
             self.row_keyword.pack_forget()
+            self.row_browser.pack_forget()
 
     def _on_ok(self):
         hotkey = self.hotkey_var.get().strip()
@@ -227,15 +242,34 @@ class EntryDialog(tk.Toplevel):
             messagebox.showwarning("提示", "请录制快捷键", parent=self)
             return
 
+        app = self.app_var.get()
+
+        if app == "web_app":
+            keyword = self.keyword_var.get().strip()
+            if not keyword:
+                messagebox.showwarning("提示", "网页应用必须填写标题关键词", parent=self)
+                return
+            self.result = {
+                "app": "web_app",
+                "hotkey": hotkey,
+                "enabled": self.enabled_var.get(),
+                "launch_if_not_running": False,
+                "install_path": "",
+                "exe_name": self.BROWSER_MAP[self.browser_var.get()],
+                "title_keyword": keyword,
+            }
+            self.destroy()
+            return
+
         self.result = {
-            "app": self.app_var.get(),
+            "app": app,
             "hotkey": hotkey,
             "enabled": self.enabled_var.get(),
             "launch_if_not_running": self.launch_var.get(),
             "install_path": self.path_var.get().strip(),
         }
 
-        if self.app_var.get() == "generic":
+        if app == "generic":
             exe_name = self.exe_var.get().strip()
             install_path = self.path_var.get().strip()
             if not exe_name and not install_path:
@@ -467,6 +501,11 @@ class HotkeyManagerApp(tk.Tk):
                     if install_path:
                         exe_name = Path(install_path).name
                 app_name = f"通用 | {exe_name}" if exe_name else "通用"
+            elif app_id == "web_app":
+                exe_name = entry["config_entry"].get("exe_name", "")
+                browser = "Chrome" if exe_name == "chrome.exe" else "Edge"
+                keyword = entry["config_entry"].get("title_keyword", "")
+                app_name = f"网页 | {browser} | {keyword}"
             else:
                 app_name = EntryDialog.APP_NAMES.get(app_id, app_id)
             hotkey = entry["hotkey"]
