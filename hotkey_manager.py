@@ -769,7 +769,6 @@ class HotkeyManager:
         raw_entries = self.config.get("entries", [])
         self.entries = []
         self.entry_map = {}
-        seen_hotkeys = set()
         self.next_id = 1
 
         for raw_entry in raw_entries:
@@ -782,11 +781,6 @@ class HotkeyManager:
                 modifiers, virtual_key = parse_hotkey(hotkey)
             except ValueError:
                 continue
-
-            hotkey_signature = (modifiers, virtual_key)
-            if hotkey_signature in seen_hotkeys:
-                continue
-            seen_hotkeys.add(hotkey_signature)
 
             entry_id = self.next_id
             self.next_id += 1
