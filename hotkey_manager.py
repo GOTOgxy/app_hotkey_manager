@@ -449,6 +449,7 @@ class AppController:
         app_paths_registry_names: list[str] | None = None,
         launch_timeout_seconds: float = 8.0,
         title_keyword: str = "",
+        relaunch_if_no_window: bool = False,
     ):
         self.app_id = app_id
         self.exe_name = exe_name
@@ -464,6 +465,7 @@ class AppController:
         self.app_paths_registry_names = app_paths_registry_names or []
         self.launch_timeout_seconds = launch_timeout_seconds
         self.title_keyword = title_keyword
+        self.relaunch_if_no_window = relaunch_if_no_window
 
     def iter_target_processes(self):
         return iter_processes_by_name(self.exe_name)
@@ -561,18 +563,12 @@ class AppController:
             return False
         self._restore_to_taskbar(hwnd)
 
-        disable = ctypes.c_int(1)
-        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, ctypes.byref(disable), ctypes.sizeof(disable))
-
         if user32.IsIconic(hwnd):
             user32.ShowWindow(hwnd, SW_RESTORE)
         elif user32.IsZoomed(hwnd):
             user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
         else:
             user32.ShowWindow(hwnd, SW_SHOW)
-
-        disable = ctypes.c_int(0)
-        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, ctypes.byref(disable), ctypes.sizeof(disable))
 
         return force_foreground_window(hwnd)
 
@@ -689,7 +685,8 @@ class AppController:
                     self.activate_window(hwnd)
                 return
 
-        self.relaunch_existing_instance(pids[0]) if self.launch_if_not_running else None
+        if self.relaunch_if_no_window or self.launch_if_not_running:
+            self.relaunch_existing_instance(pids[0])
 
 
 def create_builtin_controller(app_id: str, entry: dict) -> AppController:
@@ -769,11 +766,12 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             exe_name=exe_name,
             primary_window_classes=set(),
             ignored_window_classes={"IME", "MSCTFIME UI", "GDI+ Hook Window Class"},
-            hide_mode="minimize",
-            hide_from_taskbar=True,
+            hide_mode="hide",
+            hide_from_taskbar=False,
             launch_if_not_running=bool(entry.get("launch_if_not_running", False)),
             install_path=install_path,
             title_keyword=entry.get("title_keyword", ""),
+            relaunch_if_no_window=True,
         )
 
     if app_id == "web_app":

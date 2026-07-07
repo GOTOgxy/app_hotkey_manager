@@ -163,8 +163,11 @@ class EntryDialog(tk.Toplevel):
         row4 = ttk.Frame(main_frame)
         row4.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(row4, text="启动未运行：", width=10).pack(side=tk.LEFT)
+        default_launch = entry["config_entry"].get("launch_if_not_running", False) if entry else False
+        if entry is None and self.app_var.get() == "generic":
+            default_launch = True
         self.launch_var = tk.BooleanVar(
-            value=entry["config_entry"].get("launch_if_not_running", False) if entry else False
+            value=default_launch
         )
         ttk.Checkbutton(row4, variable=self.launch_var).pack(side=tk.LEFT)
 
@@ -228,6 +231,8 @@ class EntryDialog(tk.Toplevel):
             self.row_exe.pack(fill=tk.X, pady=(0, 10))
             self.row_keyword.pack(fill=tk.X, pady=(0, 10))
             self.row_browser.pack_forget()
+            if self.entry is None:
+                self.launch_var.set(True)
         elif app == "web_app":
             self.row_exe.pack_forget()
             self.row_keyword.pack(fill=tk.X, pady=(0, 10))
@@ -236,6 +241,8 @@ class EntryDialog(tk.Toplevel):
             self.row_exe.pack_forget()
             self.row_keyword.pack_forget()
             self.row_browser.pack_forget()
+            if self.entry is None:
+                self.launch_var.set(False)
 
     def _on_ok(self):
         hotkey = self.hotkey_var.get().strip()

@@ -19,7 +19,7 @@
     {
       "app": "termius",
       "hotkey": "CTRL+Q",
-      "launch_if_not_running": false,
+      "launch_if_not_running": true,
       "install_path": "",
       "enabled": true
     },
