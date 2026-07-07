@@ -41,7 +41,7 @@
       "hotkey": "ALT + CTRL + G",
       "launch_if_not_running": false,
       "install_path": "",
-      "enabled": true,
+      "enabled": false,
       "exe_name": "msedge.exe",
       "title_keyword": "Google Gemini"
     },
@@ -50,7 +50,7 @@
       "hotkey": "ALT+CTRL+A",
       "launch_if_not_running": false,
       "install_path": "C:/Users/gxy/AppData/Local/Programs/QianwenApp/qianwen.exe",
-      "enabled": true
+      "enabled": false
     }
   ]
 }

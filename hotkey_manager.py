@@ -750,7 +750,18 @@ def load_config() -> dict:
             "mutex_name": DEFAULT_MUTEX_NAME,
             "entries": [],
         }
-    return json.loads(config_path.read_text(encoding="utf-8"))
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "display_name": "App Hotkey Manager",
+            "mutex_name": DEFAULT_MUTEX_NAME,
+            "entries": [],
+        }
+    config.setdefault("display_name", "App Hotkey Manager")
+    config.setdefault("mutex_name", DEFAULT_MUTEX_NAME)
+    config.setdefault("entries", [])
+    return config
 
 
 class HotkeyManager:
@@ -794,6 +805,8 @@ class HotkeyManager:
                 "controller": controller,
                 "config_entry": raw_entry,
                 "enabled": raw_entry.get("enabled", True),
+                "registered": False,
+                "last_error": None,
             }
             self.entries.append(entry)
             self.entry_map[entry_id] = entry
@@ -812,6 +825,8 @@ class HotkeyManager:
                 "controller": CallbackController(callback=lambda: None),
                 "config_entry": {"app": "hot_key_manager", "name": "Hot Key Manager", "hotkey": DEFAULT_SELF_HOTKEY},
                 "enabled": True,
+                "registered": False,
+                "last_error": None,
             }
             self.entries.append(self_entry)
             self.entry_map[self_entry["id"]] = self_entry
@@ -833,20 +848,44 @@ class HotkeyManager:
         with self._queue_lock:
             self._pending_unregisters.append(entry["id"])
 
+    def _register_now(self, hwnd, entry: dict) -> bool:
+        ctypes.set_last_error(0)
+        ok = user32.RegisterHotKey(hwnd, entry["id"], entry["modifiers"], entry["virtual_key"])
+        entry["registered"] = bool(ok)
+        entry["last_error"] = None if ok else ctypes.get_last_error()
+        return bool(ok)
+
+    def _unregister_now(self, hwnd, entry_id: int) -> bool:
+        entry = self.entry_map.get(entry_id)
+        was_registered = bool(entry and entry.get("registered"))
+        ctypes.set_last_error(0)
+        ok = user32.UnregisterHotKey(hwnd, entry_id)
+        if entry:
+            entry["registered"] = False
+            if ok:
+                entry["last_error"] = None
+            elif was_registered:
+                entry["last_error"] = ctypes.get_last_error()
+        return bool(ok)
+
     def set_self_callback(self, callback):
         for entry in self.entries:
             if entry["config_entry"].get("app") == "hot_key_manager":
                 entry["controller"] = CallbackController(callback=callback)
 
-    def start_polling_thread(self):
+    def start_polling_thread(self, register_enabled: bool = True):
         self._pending_registers = []
         self._pending_unregisters = []
+        self._register_enabled_on_start = register_enabled
         self._polling = True
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
         self._poll_thread.start()
 
     def stop_polling_thread(self):
         self._polling = False
+        thread = getattr(self, "_poll_thread", None)
+        if thread and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
 
     def _poll_loop(self):
         wndproc_ref = ctypes.WINFUNCTYPE(
@@ -864,9 +903,10 @@ class HotkeyManager:
         )
         self._hwnd = hwnd
 
-        for entry in list(self.entries):
-            if entry.get("enabled", True):
-                user32.RegisterHotKey(hwnd, entry["id"], entry["modifiers"], entry["virtual_key"])
+        if self._register_enabled_on_start:
+            for entry in list(self.entries):
+                if entry.get("enabled", True):
+                    self._register_now(hwnd, entry)
 
         with self._queue_lock:
             self._pending_registers.clear()
@@ -881,10 +921,10 @@ class HotkeyManager:
                 self._pending_unregisters.clear()
 
             for entry in pending_reg:
-                user32.RegisterHotKey(hwnd, entry["id"], entry["modifiers"], entry["virtual_key"])
+                self._register_now(hwnd, entry)
 
             for entry_id in pending_unreg:
-                user32.UnregisterHotKey(hwnd, entry_id)
+                self._unregister_now(hwnd, entry_id)
 
             while user32.PeekMessageW(ctypes.byref(msg), hwnd, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
                 if msg.message == WM_HOTKEY and msg.wParam in self.entry_map:
@@ -895,6 +935,9 @@ class HotkeyManager:
             time.sleep(0.02)
 
         if hwnd:
+            for entry in list(self.entries):
+                if entry.get("registered"):
+                    self._unregister_now(hwnd, entry["id"])
             user32.DestroyWindow(hwnd)
         self._hwnd = None
 
@@ -946,6 +989,8 @@ class HotkeyManager:
             "controller": controller,
             "config_entry": config_entry,
             "enabled": enabled,
+            "registered": False,
+            "last_error": None,
         }
 
         self.entries.append(entry)
@@ -989,6 +1034,8 @@ class HotkeyManager:
             "controller": controller,
             "config_entry": config_entry,
             "enabled": enabled,
+            "registered": False,
+            "last_error": None,
         }
 
         idx = self.entries.index(old_entry)
@@ -1032,4 +1079,6 @@ class HotkeyManager:
     def _save_config(self):
         self.config["entries"] = [e["config_entry"] for e in self.entries]
         config_path = get_base_dir() / CONFIG_FILE_NAME
-        config_path.write_text(json.dumps(self.config, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(self.config, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp_path, config_path)

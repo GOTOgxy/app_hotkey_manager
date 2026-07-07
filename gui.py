@@ -305,6 +305,7 @@ class HotkeyManagerApp(tk.Tk):
         self._create_ui()
         self._refresh_list()
         self.manager.start_polling_thread()
+        self.after(100, self._refresh_list)
 
         self.tray_menu = tk.Menu(self, tearoff=0)
         self.tray_menu.add_command(label="显示主窗口", command=self._show_window)
@@ -441,6 +442,7 @@ class HotkeyManagerApp(tk.Tk):
         ttk.Button(toolbar, text="添加", command=self._add_entry, width=8).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="删除", command=self._delete_entry, width=8).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="编辑", command=self._edit_entry, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="刷新", command=self._refresh_list, width=8).pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
 
@@ -454,20 +456,22 @@ class HotkeyManagerApp(tk.Tk):
         list_frame = ttk.Frame(self, padding=5)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ("app", "hotkey", "enabled", "launch", "path")
+        columns = ("app", "hotkey", "enabled", "registered", "launch", "path")
         self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
 
         self.tree.heading("app", text="应用")
         self.tree.heading("hotkey", text="快捷键")
         self.tree.heading("enabled", text="启用")
+        self.tree.heading("registered", text="注册")
         self.tree.heading("launch", text="启动未运行")
         self.tree.heading("path", text="安装路径")
 
         self.tree.column("app", width=100, minwidth=80)
         self.tree.column("hotkey", width=120, minwidth=100)
         self.tree.column("enabled", width=60, minwidth=50, anchor=tk.CENTER)
+        self.tree.column("registered", width=90, minwidth=70, anchor=tk.CENTER)
         self.tree.column("launch", width=90, minwidth=80, anchor=tk.CENTER)
-        self.tree.column("path", width=200, minwidth=100)
+        self.tree.column("path", width=170, minwidth=100)
 
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -511,11 +515,18 @@ class HotkeyManagerApp(tk.Tk):
                 app_name = EntryDialog.APP_NAMES.get(app_id, app_id)
             hotkey = entry["hotkey"]
             enabled = "✓" if entry.get("enabled", True) else "✗"
+            if not entry.get("enabled", True):
+                registered = "未启用"
+            elif entry.get("registered"):
+                registered = "已注册"
+            else:
+                err = entry.get("last_error")
+                registered = f"失败 {err}" if err else "待注册"
             launch = "✓" if entry["config_entry"].get("launch_if_not_running", False) else "✗"
             path = entry["config_entry"].get("install_path", "")
 
             self.tree.insert("", tk.END, iid=str(entry["id"]),
-                           values=(app_name, hotkey, enabled, launch, path))
+                           values=(app_name, hotkey, enabled, registered, launch, path))
 
         count = len(self.manager.entries)
         self.status_label.config(text=f"共 {count} 个条目")
@@ -566,6 +577,7 @@ class HotkeyManagerApp(tk.Tk):
                 return
             if entry:
                 self._refresh_list()
+                self.after(100, self._refresh_list)
 
     def _edit_entry(self):
         entry_id = self._get_selected_id()
@@ -597,6 +609,7 @@ class HotkeyManagerApp(tk.Tk):
                 messagebox.showerror("错误", str(e))
                 return
             self._refresh_list()
+            self.after(100, self._refresh_list)
 
     def _delete_entry(self):
         entry_id = self._get_selected_id()
@@ -616,6 +629,7 @@ class HotkeyManagerApp(tk.Tk):
 
         self.manager.toggle_entry(entry_id)
         self._refresh_list()
+        self.after(100, self._refresh_list)
 
     def _toggle_all(self):
         if self.running_var.get():
@@ -625,6 +639,7 @@ class HotkeyManagerApp(tk.Tk):
         else:
             self.manager.unregister_all()
         self._refresh_list()
+        self.after(100, self._refresh_list)
 
     def _on_double_click(self, event):
         region = self.tree.identify("region", event.x, event.y)
@@ -643,7 +658,8 @@ class HotkeyManagerApp(tk.Tk):
         if column == "#3":
             self.manager.toggle_entry(entry_id)
             self._refresh_list()
-        elif column == "#4":
+            self.after(100, self._refresh_list)
+        elif column == "#5":
             old_val = entry["config_entry"].get("launch_if_not_running", False)
             entry["config_entry"]["launch_if_not_running"] = not old_val
             self.manager._save_config()
