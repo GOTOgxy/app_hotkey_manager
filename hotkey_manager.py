@@ -630,7 +630,7 @@ class AppController:
                     self.activate_window(hwnd)
                 return
 
-        self.relaunch_existing_instance(pids[0])
+        self.relaunch_existing_instance(pids[0]) if self.launch_if_not_running else None
 
 
 def create_builtin_controller(app_id: str, entry: dict) -> AppController:
