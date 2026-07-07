@@ -127,6 +127,21 @@ user32.ShowWindow.restype = wintypes.BOOL
 user32.SetForegroundWindow.argtypes = [wintypes.HWND]
 user32.SetForegroundWindow.restype = wintypes.BOOL
 
+user32.BringWindowToTop.argtypes = [wintypes.HWND]
+user32.BringWindowToTop.restype = wintypes.BOOL
+
+user32.SetActiveWindow.argtypes = [wintypes.HWND]
+user32.SetActiveWindow.restype = wintypes.HWND
+
+user32.SetFocus.argtypes = [wintypes.HWND]
+user32.SetFocus.restype = wintypes.HWND
+
+user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+user32.AttachThreadInput.restype = wintypes.BOOL
+
+kernel32.GetCurrentThreadId.argtypes = []
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
 user32.IsIconic.argtypes = [wintypes.HWND]
 user32.IsIconic.restype = wintypes.BOOL
 
@@ -306,6 +321,40 @@ def get_window_pid(hwnd: int) -> int:
     return pid.value
 
 
+def get_window_thread_id(hwnd: int) -> int:
+    pid = wintypes.DWORD()
+    return int(user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)))
+
+
+def force_foreground_window(hwnd: int) -> bool:
+    if not hwnd:
+        return False
+
+    current_thread = int(kernel32.GetCurrentThreadId())
+    target_thread = get_window_thread_id(hwnd)
+    foreground = user32.GetForegroundWindow()
+    foreground_thread = get_window_thread_id(foreground) if foreground else 0
+
+    attached_target = False
+    attached_foreground = False
+    try:
+        if target_thread and target_thread != current_thread:
+            attached_target = bool(user32.AttachThreadInput(current_thread, target_thread, True))
+        if foreground_thread and foreground_thread not in (current_thread, target_thread):
+            attached_foreground = bool(user32.AttachThreadInput(current_thread, foreground_thread, True))
+
+        user32.BringWindowToTop(hwnd)
+        user32.SetActiveWindow(hwnd)
+        user32.SetFocus(hwnd)
+        ok = bool(user32.SetForegroundWindow(hwnd))
+        return ok or user32.GetForegroundWindow() == hwnd
+    finally:
+        if attached_foreground:
+            user32.AttachThreadInput(current_thread, foreground_thread, False)
+        if attached_target:
+            user32.AttachThreadInput(current_thread, target_thread, False)
+
+
 def iter_windows_for_pid(pid: int):
     windows = []
 
@@ -468,7 +517,17 @@ class AppController:
         return None
 
     def is_foreground_window(self, hwnd: int) -> bool:
-        return bool(hwnd and user32.IsWindowVisible(hwnd) and user32.GetForegroundWindow() == hwnd)
+        if not hwnd or not user32.IsWindowVisible(hwnd):
+            return False
+        foreground = user32.GetForegroundWindow()
+        if not foreground:
+            return False
+        if foreground == hwnd:
+            return True
+        foreground_pid = get_window_pid(foreground)
+        if foreground_pid == get_window_pid(hwnd):
+            return True
+        return foreground_pid in set(self.iter_target_processes())
 
     def _hide_from_taskbar(self, hwnd: int):
         rect = wintypes.RECT()
@@ -515,7 +574,7 @@ class AppController:
         disable = ctypes.c_int(0)
         dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, ctypes.byref(disable), ctypes.sizeof(disable))
 
-        return bool(user32.SetForegroundWindow(hwnd))
+        return force_foreground_window(hwnd)
 
     def hide_window(self, hwnd: int) -> bool:
         if not hwnd:
@@ -774,6 +833,8 @@ class HotkeyManager:
         self._queue_lock = threading.Lock()
         self._polling = False
         self._hwnd = None
+        self.external_trigger_mode = False
+        self.external_trigger_active = False
         self._build_entries()
 
     def _build_entries(self):
@@ -841,10 +902,18 @@ class HotkeyManager:
             self._unregister_one(entry)
 
     def _register_one(self, entry: dict):
+        if self.external_trigger_mode:
+            entry["registered"] = bool(self.external_trigger_active and entry.get("enabled", True))
+            entry["last_error"] = None
+            return
         with self._queue_lock:
             self._pending_registers.append(entry)
 
     def _unregister_one(self, entry: dict):
+        if self.external_trigger_mode:
+            entry["registered"] = False
+            entry["last_error"] = None
+            return
         with self._queue_lock:
             self._pending_unregisters.append(entry["id"])
 
