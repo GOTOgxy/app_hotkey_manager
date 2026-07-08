@@ -63,6 +63,10 @@ def _dialog_font(widget, delta=0, weight=None):
     return ctk.CTkFont(family="Microsoft YaHei UI", size=scaled(widget, size), weight=weight)
 
 
+def _menu_font(widget, size=18):
+    return ("Microsoft YaHei UI", scaled(widget, size))
+
+
 def _readonly_entry(parent, variable):
     entry = ctk.CTkEntry(parent, textvariable=variable, font=_dialog_font(parent))
     entry.bind("<Key>", lambda _event: "break")
@@ -379,8 +383,8 @@ class HotkeyManagerApp(ctk.CTk):
         self.tk.call("tk", "scaling", self.ui_scale)
 
         self.title("App Hotkey Manager")
-        self.geometry("1120x760")
-        self.minsize(900, 620)
+        self.geometry(f"{scaled(self, 1120)}x{scaled(self, 760)}")
+        self.minsize(scaled(self, 900), scaled(self, 620))
         self.configure(fg_color=("#f4f4f5", "#18181b"))
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -392,7 +396,7 @@ class HotkeyManagerApp(ctk.CTk):
         self.manager.start_polling_thread()
         self.after(100, self._refresh_list)
 
-        self.tray_menu = tk.Menu(self, tearoff=0)
+        self.tray_menu = tk.Menu(self, tearoff=0, font=_menu_font(self))
         self.tray_menu.add_command(label="显示主窗口", command=self._show_window)
         self.tray_menu.add_separator()
         self.tray_menu.add_command(label="退出", command=self._quit_app)
@@ -576,7 +580,7 @@ class HotkeyManagerApp(ctk.CTk):
         self.tree.bind("<Double-1>", self._on_double_click)
         self.tree.bind("<Button-3>", self._on_right_click)
 
-        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu = tk.Menu(self, tearoff=0, font=_menu_font(self))
         self.context_menu.add_command(label="编辑", command=self._edit_entry)
         self.context_menu.add_command(label="启用/禁用", command=self._toggle_entry)
         self.context_menu.add_separator()
