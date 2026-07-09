@@ -35,6 +35,7 @@ SW_SHOWMAXIMIZED = 3
 SW_SHOW = 5
 SW_MINIMIZE = 6
 SW_RESTORE = 9
+SW_SHOWNA = 8
 
 WM_HOTKEY = 0x0312
 PM_REMOVE = 0x0001
@@ -249,11 +250,14 @@ user32.SetWindowPos.restype = wintypes.BOOL
 GWL_EXSTYLE = -20
 WS_EX_APPWINDOW = 0x00040000
 WS_EX_TOOLWINDOW = 0x00000080
+HWND_TOPMOST = ctypes.c_void_p(-1).value
+HWND_NOTOPMOST = ctypes.c_void_p(-2).value
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 SWP_FRAMECHANGED = 0x0020
+SWP_SHOWWINDOW = 0x0040
 
 
 HOTKEY_MODIFIERS = {
@@ -470,6 +474,37 @@ class AppController:
     def iter_target_processes(self):
         return iter_processes_by_name(self.exe_name)
 
+    def _window_rank(self, hwnd: int, class_name: str, title: str, is_visible: bool) -> tuple[int, int, int, int]:
+        rect = wintypes.RECT()
+        if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            width = max(0, rect.right - rect.left)
+            height = max(0, rect.bottom - rect.top)
+        else:
+            width = 0
+            height = 0
+        area = width * height
+        ex_style = int(user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE))
+        is_tool_window = bool(ex_style & WS_EX_TOOLWINDOW)
+        is_generic_like = self.app_id in {"generic", "web_app"}
+        title_text = title.casefold()
+
+        penalty = 0
+        if not is_visible:
+            penalty += 1000
+        if is_tool_window:
+            penalty += 250
+        if area < 120000:
+            penalty += 160
+        elif area < 300000:
+            penalty += 80
+        if is_generic_like and len(title.strip()) <= 2:
+            penalty += 100
+        if is_generic_like and ("截图" in title_text or "screenshot" in title_text):
+            penalty += 220
+        if class_name == "Chrome_WidgetWin_0":
+            penalty += 120
+        return (penalty, -area, 0 if title else 1, int(hwnd))
+
     def find_main_window(self, pid: int) -> int | None:
         preferred = []
         keyword_match = []
@@ -489,21 +524,22 @@ class AppController:
 
             title = get_window_text(hwnd)
             is_visible = bool(user32.IsWindowVisible(hwnd))
+            rank = self._window_rank(hwnd, class_name, title, is_visible)
 
             if class_name in self.primary_window_classes:
-                preferred.append((0 if is_visible else 1, hwnd))
+                preferred.append((rank, hwnd))
                 return True
 
             if self.title_keyword and title and self.title_keyword in title:
-                keyword_match.append((0 if is_visible else 1, hwnd))
+                keyword_match.append((rank, hwnd))
                 return True
 
             if title:
-                fallback.append((0 if is_visible else 1, hwnd))
+                fallback.append((rank, hwnd))
                 return True
 
             if class_name:
-                fallback.append((1 if is_visible else 2, hwnd))
+                fallback.append((rank, hwnd))
             return True
 
         user32.EnumWindows(callback, 0)
@@ -522,14 +558,23 @@ class AppController:
         if not hwnd or not user32.IsWindowVisible(hwnd):
             return False
         foreground = user32.GetForegroundWindow()
-        if not foreground:
+        if not foreground or not user32.IsWindowVisible(foreground):
             return False
         if foreground == hwnd:
             return True
-        foreground_pid = get_window_pid(foreground)
-        if foreground_pid == get_window_pid(hwnd):
-            return True
-        return foreground_pid in set(self.iter_target_processes())
+        if get_window_pid(foreground) != get_window_pid(hwnd):
+            return False
+
+        foreground_title = get_window_text(foreground).strip()
+        target_title = get_window_text(hwnd).strip()
+        foreground_class = get_class_name(foreground)
+        target_class = get_class_name(hwnd)
+
+        if foreground_title and target_title:
+            return foreground_title == target_title
+        if foreground_title or target_title:
+            return False
+        return foreground_class == target_class
 
     def _hide_from_taskbar(self, hwnd: int):
         rect = wintypes.RECT()
@@ -563,12 +608,24 @@ class AppController:
             return False
         self._restore_to_taskbar(hwnd)
 
+        user32.ShowWindow(hwnd, SW_SHOWNA)
         if user32.IsIconic(hwnd):
             user32.ShowWindow(hwnd, SW_RESTORE)
         elif user32.IsZoomed(hwnd):
             user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
         else:
-            user32.ShowWindow(hwnd, SW_SHOW)
+            user32.ShowWindow(hwnd, SW_SHOWNORMAL)
+
+        user32.SetWindowPos(
+            hwnd, HWND_TOPMOST,
+            0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
+        user32.SetWindowPos(
+            hwnd, HWND_NOTOPMOST,
+            0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
 
         return force_foreground_window(hwnd)
 
@@ -765,9 +822,16 @@ def create_builtin_controller(app_id: str, entry: dict) -> AppController:
             app_id=app_id,
             exe_name=exe_name,
             primary_window_classes=set(),
-            ignored_window_classes={"IME", "MSCTFIME UI", "GDI+ Hook Window Class"},
-            hide_mode="hide",
-            hide_from_taskbar=False,
+            ignored_window_classes={
+                "IME",
+                "MSCTFIME UI",
+                "GDI+ Hook Window Class",
+                "Chrome_StatusTrayWindow",
+                "Base_PowerMessageWindow",
+                "crashpad_SessionEndWatcher",
+            },
+            hide_mode="minimize",
+            hide_from_taskbar=True,
             launch_if_not_running=bool(entry.get("launch_if_not_running", False)),
             install_path=install_path,
             title_keyword=entry.get("title_keyword", ""),
